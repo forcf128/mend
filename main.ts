@@ -193,14 +193,19 @@ class WorkTree {
   }
 
   writeAll(): void {
+    // Delete first: a file this patch creates under a path the patch
+    // deletes (or a file moved into a directory the patch creates) needs
+    // the old file gone before its parent directory can be made.
     for (const [p, cur] of this.pending) {
-      if (this.diskText(p) === cur) continue;
-      if (cur === null) {
+      if (cur === null && this.diskText(p) !== null) {
         rmSync(p, { force: true });
-      } else {
-        mkdirSync(dirname(p), { recursive: true });
-        writeFileSync(p, cur, 'utf8');
       }
+    }
+    for (const [p, cur] of this.pending) {
+      if (cur === null) continue;
+      if (this.diskText(p) === cur) continue;
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, cur, 'utf8');
     }
   }
 }
@@ -570,7 +575,8 @@ function applyHunks(doc: Doc, hunks: Hunk[], strict: boolean, path: string): Doc
   let d = 0;
   for (const h of hunks) {
     if (h.o.length === 0) {
-      const pos = Math.min(h.a + d, lines.length);
+      // "after the first A + d lines" — a negative count is the top.
+      const pos = Math.max(0, Math.min(h.a + d, lines.length));
       const atEnd = pos === lines.length;
       const ins = h.n.map((e) => e.text);
       if (ins.length > 0) {
